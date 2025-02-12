@@ -11,14 +11,25 @@ from utils import DL1Combine, save_checkpoint, load_checkpoint
 from net_models import CrystalNet as RBufferGenerator
 import torch.optim.lr_scheduler
 
-def load_data(ds_name,obj_num, batch_size, res=256, test_size=0.03, random_seed=42):
+def load_data(dataset_name, obj_num, batch_size, device, res=256, test_size=0.03, random_seed=42):
     """Loads and splits the dataset into train and validation sets."""
     # Load data
-    G = torch.load(f"./datasets/{ds_name}/{ds_name}_RAOV_Xg_{res}.pt")
-    X = torch.load(f"./datasets/{ds_name}/{ds_name}_RAOV_X_{res}.pt")
+
+    logging.info("Loading Datasets...")
+    device = 0 if device == 'cuda' else 'cpu'
+    try:
+        G = torch.load(f"./datasets/{dataset_name}/{dataset_name}_RAOV_Xg_{res}.pt", mmap=True)
+        X = torch.load(f"./datasets/{dataset_name}/{dataset_name}_RAOV_X_{res}.pt", mmap=True)
+    except FileNotFoundError as e:
+        logging.error(f"File not found: {e}")
+        raise
+
     X = torch.moveaxis(X,3,1)
+
+    logging.info("Finished Loading Datasets.")
+    exit(999)
     
-    Rnpz = np.load(f"./datasets/{ds_name}/{ds_name}_RAOV_{res}.npz")
+    Rnpz = np.load(f"./datasets/{dataset_name}/{dataset_name}_RAOV_{res}.npz")
 
     Rnp = np.rollaxis(Rnpz["RAOV"], 3, 1)
     Rnp[:,0,...] = np.round(Rnp[:,0,...])
@@ -32,7 +43,7 @@ def load_data(ds_name,obj_num, batch_size, res=256, test_size=0.03, random_seed=
     train_length = int(data_length*test_size)
         
     # Because of the large volume of data, the train/validation split will be seperated by a fixed range
-    # This won't affect anything because the data itself is iid, although it will be painful to switch validation set. More eligent approach will come later.
+    # This won't affect anything because the data itself is iid, although it will be painful to switch validation set. More elegant approach will come later.
 
     Xtr = X[:train_length,...]
     Xva = X[train_length:,...]
@@ -43,7 +54,7 @@ def load_data(ds_name,obj_num, batch_size, res=256, test_size=0.03, random_seed=
     Rtr = torch.Tensor(Rnp[:train_length,...])
     Rva = torch.Tensor(Rnp[train_length:,...])
 
-    print(Xtr.shape)
+    logging.info(Xtr.shape)
     
     # Convert to tensors
     dataset_tr = TensorDataset(Xtr,Gtr,Rtr[:,-3:,...],Rtr[:,0,...],Rtr[:,1:3,...])
@@ -122,9 +133,9 @@ def main():
     # Argument Parsing
     parser = argparse.ArgumentParser()
     parser.add_argument('--scene_name', type=str, required=True)
-    parser.add_argument('--num_idx', type=int, required=True)
-    parser.add_argument('--single_batch_size', type=int, default=3)
-    parser.add_argument('--num_epochs', type=int, default=100)
+    parser.add_argument('--num_idx', type=int, required=True, help='Number of objects in the scene')
+    parser.add_argument('--single-batch-size', type=int, default=3) # typical sizes 2 - 64
+    parser.add_argument('--num_epochs', type=int, default=100)      # typical epochs 50 - ?
     args = parser.parse_args()
     
     # Logging Configuration
@@ -136,7 +147,7 @@ def main():
     
     # Load Data
     batch_size = torch.cuda.device_count() * args.single_batch_size
-    dataloader_train, dataloader_val = load_data(args.scene_name,args.num_idx, batch_size)
+    dataloader_train, dataloader_val = load_data(args.scene_name, args.num_idx, batch_size, device)
 
     # Model, Optimizer, Scheduler, and Criterion
     net = RBufferGenerator(args.num_idx+1).to(device)

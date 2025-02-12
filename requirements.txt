@@ -1,6 +1,6 @@
-torch==2.0.1
-torchvision==0.15.2
-numpy==2.0.1
-matplotlib==3.5.0
+torch
+torchvision
+torchaudio
+numpy
+matplotlib
 scikit-learn
-torchmetrics==1.2.1
