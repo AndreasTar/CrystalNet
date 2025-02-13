@@ -11,25 +11,24 @@ from utils import DL1Combine, save_checkpoint, load_checkpoint
 from net_models import CrystalNet as RBufferGenerator
 import torch.optim.lr_scheduler
 
-def load_data(dataset_name, obj_num, batch_size, device, res=256, test_size=0.03, random_seed=42):
+def load_data(dataset_name, obj_num, batch_size, res=256, test_size=0.03, random_seed=42):
     """Loads and splits the dataset into train and validation sets."""
     # Load data
 
     logging.info("Loading Datasets...")
-    device = 0 if device == 'cuda' else 'cpu'
+
     try:
         G = torch.load(f"./datasets/{dataset_name}/{dataset_name}_RAOV_Xg_{res}.pt", mmap=True)
         X = torch.load(f"./datasets/{dataset_name}/{dataset_name}_RAOV_X_{res}.pt", mmap=True)
+        Rnpz = np.load(f"./datasets/{dataset_name}/{dataset_name}_RAOV_{res}.npz", mmap_mode='r')
     except FileNotFoundError as e:
         logging.error(f"File not found: {e}")
         raise
 
     X = torch.moveaxis(X,3,1)
-
-    logging.info("Finished Loading Datasets.")
-    exit(999)
     
-    Rnpz = np.load(f"./datasets/{dataset_name}/{dataset_name}_RAOV_{res}.npz")
+    logging.info("Finished Loading Datasets.")
+    logging.info("Altering shape of data and matrices...")
 
     Rnp = np.rollaxis(Rnpz["RAOV"], 3, 1)
     Rnp[:,0,...] = np.round(Rnp[:,0,...])
@@ -41,9 +40,12 @@ def load_data(dataset_name, obj_num, batch_size, device, res=256, test_size=0.03
 
     data_length = X.shape[0]
     train_length = int(data_length*test_size)
+
+    logging.info("Beggining Train/Validation Splits...")
         
     # Because of the large volume of data, the train/validation split will be seperated by a fixed range
-    # This won't affect anything because the data itself is iid, although it will be painful to switch validation set. More elegant approach will come later.
+    # This won't affect anything because the data itself is iid (independent & identically distributed), 
+    # although it will be painful to switch validation set. More elegant approach will come later.
 
     Xtr = X[:train_length,...]
     Xva = X[train_length:,...]
@@ -54,7 +56,11 @@ def load_data(dataset_name, obj_num, batch_size, device, res=256, test_size=0.03
     Rtr = torch.Tensor(Rnp[:train_length,...])
     Rva = torch.Tensor(Rnp[train_length:,...])
 
-    logging.info(Xtr.shape)
+    logging.info(f"Shape of train data : {Xtr.shape}")
+
+    exit(999)
+
+    logging.info("Coverting to Tensors and Creating DataLoaders...")
     
     # Convert to tensors
     dataset_tr = TensorDataset(Xtr,Gtr,Rtr[:,-3:,...],Rtr[:,0,...],Rtr[:,1:3,...])
@@ -63,6 +69,8 @@ def load_data(dataset_name, obj_num, batch_size, device, res=256, test_size=0.03
     # DataLoader creation
     dataloader_train = DataLoader(dataset_tr, batch_size=batch_size, shuffle=True)
     dataloader_val = DataLoader(dataset_va, batch_size=batch_size, shuffle=False)
+
+    logging.info("Finished Loading Data!")
     
     return dataloader_train, dataloader_val
 
@@ -79,8 +87,8 @@ def train_model(net, dataloader_train, dataloader_val, optimizer, scheduler, cri
             optimizer.zero_grad()
             
             # Forward pass
-            pred_sn,pred_oi,pred_uv = net(x, g)
-            loss = criterion(pred_sn,pred_oi,pred_uv,sn,oi,uv)
+            pred_sn, pred_oi, pred_uv = net(x, g)
+            loss = criterion(pred_sn, pred_oi, pred_uv, sn, oi, uv)
             
             # Backward pass
             loss.backward()
@@ -132,10 +140,10 @@ def evaluate_model(net, dataloader_val, criterion, device):
 def main():
     # Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument('--scene_name', type=str, required=True)
-    parser.add_argument('--num_idx', type=int, required=True, help='Number of objects in the scene')
+    parser.add_argument('--scene-name', type=str, required=True)
+    parser.add_argument('--num-idx', type=int, required=True, help='Number of objects in the scene')
     parser.add_argument('--single-batch-size', type=int, default=3) # typical sizes 2 - 64
-    parser.add_argument('--num_epochs', type=int, default=100)      # typical epochs 50 - ?
+    parser.add_argument('--num-epochs', type=int, default=100)      # typical epochs 50 - ?
     args = parser.parse_args()
     
     # Logging Configuration
@@ -147,7 +155,7 @@ def main():
     
     # Load Data
     batch_size = torch.cuda.device_count() * args.single_batch_size
-    dataloader_train, dataloader_val = load_data(args.scene_name, args.num_idx, batch_size, device)
+    dataloader_train, dataloader_val = load_data(args.scene_name, args.num_idx, batch_size)
 
     # Model, Optimizer, Scheduler, and Criterion
     net = RBufferGenerator(args.num_idx+1).to(device)
