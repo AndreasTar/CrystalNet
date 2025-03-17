@@ -41,7 +41,7 @@ def load_data(ds_name, batch_size, res=256, test_size=0.03, random_seed=42):
     print("Xnp combined with Rnp")
     # Train-validation split
     
-    X_train, X_val, G_train, G_val, Y_train, Y_val = train_test_split(Xnp, Gnp, Ynp, test_size=test_size, random_state=random_seed)
+    X_train, X_val, G_train, G_val, Y_train, Y_val = train_test_split(Xnp, Gnpz.f.Xg, Ynp, test_size=test_size, random_state=random_seed)
     
     # Convert to tensors
     dataset_train = TensorDataset(torch.Tensor(X_train), torch.Tensor(G_train), torch.Tensor(Y_train))
