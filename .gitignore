@@ -108,3 +108,6 @@ Desktop.ini
 *.pt
 *.pth
 *.zip
+
+datasets/*
+crystalnet-env
