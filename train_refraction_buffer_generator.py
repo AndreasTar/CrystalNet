@@ -1,6 +1,8 @@
 import os
+import gc
 import time
 import numpy as np
+from numpy.lib.npyio import NpzFile
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 import argparse
@@ -18,27 +20,38 @@ def load_data(dataset_name, obj_num, batch_size, res=256, test_size=0.03, random
     logging.info("Loading Datasets...")
 
     try:
-        G = torch.load(f"./datasets/{dataset_name}/{dataset_name}_RAOV_Xg_{res}.pt", mmap=True)
-        X = torch.load(f"./datasets/{dataset_name}/{dataset_name}_RAOV_X_{res}.pt", mmap=True)
-        Rnpz = np.load(f"./datasets/{dataset_name}/{dataset_name}_RAOV_{res}.npz", mmap_mode='r')
+        Gdata:NpzFile = np.load(f"./datasets/{dataset_name}/{dataset_name}_RAOV_Xg_{res}.pt", mmap_mode='r')
+        Xdata:NpzFile = np.load(f"./datasets/{dataset_name}/{dataset_name}_RAOV_X_{res}.pt", mmap_mode='r')
+        Rnpz: NpzFile = np.load(f"./datasets/{dataset_name}/{dataset_name}_RAOV_{res}.npz", mmap_mode='r')
     except FileNotFoundError as e:
         logging.error(f"File not found: {e}")
-        raise
+        raise e
 
-    X = torch.moveaxis(X,3,1)
+    #print(Xdata.)
+    #Xdata = np.moveaxis(Xdata,3,1)
     
     logging.info("Finished Loading Datasets.")
     logging.info("Altering shape of data and matrices...")
 
     Rnp = np.rollaxis(Rnpz["RAOV"], 3, 1)
-    Rnp[:,0,...] = np.round(Rnp[:,0,...])
-    Rnp[:,0,...] += 1
-    mask = np.expand_dims(np.clip(np.round(torch.sum(torch.abs(G[:,:,8,:,:]),dim=1).numpy()),0,1),axis=1)
+
+    logging.info("\tFreeing memory...")
+    del Rnpz
+    gc.collect()
+
+    Rnp[:,0,...] = np.round(Rnp[:,0,...]) + 1
+
+    logging.info("\tMaking mask...")
+    print(Gdata.files)
+    #Gdata_iter = list(Gdata.values().__iter__())
+    mask = np.expand_dims(np.clip(np.round(torch.sum(torch.abs(Gdata['cornellbox_refraction_complex_RAOV_Xg_256/data/0'][:,:,8,:,:]),dim=1)),0,1),axis=1)
     Rnp = (Rnp*mask)
+
+    logging.info("\tAltering Rnp...")
     Rnp[:,0,...][Rnp[:,0,...] > obj_num] = 0
     Rnp[:,0,...][Rnp[:,0,...] < 0] = 0
 
-    data_length = X.shape[0]
+    data_length = Xdata.values().__len__()
     train_length = int(data_length*test_size)
 
     logging.info("Beggining Train/Validation Splits...")
@@ -47,11 +60,11 @@ def load_data(dataset_name, obj_num, batch_size, res=256, test_size=0.03, random
     # This won't affect anything because the data itself is iid (independent & identically distributed), 
     # although it will be painful to switch validation set. More elegant approach will come later.
 
-    Xtr = X[:train_length,...]
-    Xva = X[train_length:,...]
+    Xtr = Xdata[:train_length,...]
+    Xva = Xdata[train_length:,...]
 
-    Gtr = G[:train_length,...]
-    Gva = G[train_length:,...]
+    Gtr = Gdata[:train_length,...]
+    Gva = Gdata[train_length:,...]
 
     Rtr = torch.Tensor(Rnp[:train_length,...])
     Rva = torch.Tensor(Rnp[train_length:,...])

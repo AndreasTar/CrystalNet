@@ -1,4 +1,5 @@
 import time
+import gc
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, TensorDataset
@@ -12,23 +13,34 @@ from net_models_renderer import CrystalRenderer
 
 def load_data(ds_name, batch_size, res=256, test_size=0.03, random_seed=42):
     """Loads and splits the dataset into train and validation sets."""
-    # Load data
-    Xnpz = np.load(f"./datasets/{ds_name}/{ds_name}_X_{res}_test.npz")
-    Gnpz = np.load(f"./datasets/{ds_name}/{ds_name}_Xg_{res}_test.npz")
-    Ynpz = np.load(f"./datasets/{ds_name}/{ds_name}_Y_{res}_test.npz")
-    Rnpz = np.load(f"./datasets/{ds_name}/{ds_name}_RInfo_{res}_test.npz")
     
+    logging.info("Loading Datasets...")
+    # Load data
+    Xnpz = np.load(f"./datasets/{ds_name}/{ds_name}_X_{res}.npz", mmap_mode='r')
+    Gnpz = np.load(f"./datasets/{ds_name}/{ds_name}_Xg_{res}.npz", mmap_mode='r')
+    Ynpz = np.load(f"./datasets/{ds_name}/{ds_name}_Y_{res}.npz", mmap_mode='r')
+    Rnpz = np.load(f"./datasets/{ds_name}/{ds_name}_RInfo_{res}.npz", mmap_mode='r')
+    
+    logging.info("Combine Data...")
     # Preprocess and combine data
-    Xnp = np.rollaxis(Xnpz["X"], 3, 1)
-    Gnp = Gnpz["Xg"]
-    Ynp = np.rollaxis(Ynpz["Y"], 3, 1) / 255
-    mask = np.expand_dims(np.clip(np.round(np.sum(np.abs(Gnp[:, :, 8, :, :]), axis=1)), 0, 1), axis=1)
+    Xnp = np.moveaxis(Xnpz.f.X, 3, 1)
+    logging.info("maybe?")
+    del Xnpz
+    gc.collect()
+    Ynp = np.moveaxis(Ynpz.f.Y, 3, 1) / 255
+    del Ynpz
+    logging.info("maybe2222?")
+    mask = np.expand_dims(np.clip(np.round(np.sum(np.abs(Gnpz.f.Xg[:, :, 8, :, :]), axis=1)), 0, 1), axis=1)
     Xnp = np.concatenate((Xnp, mask), axis=1)
-    RTexnp = np.rollaxis(Rnpz["RTex"], 3, 1) * mask
-    RNnp = np.rollaxis(Rnpz["N"], 3, 1) * mask
+    RTexnp = np.moveaxis(Rnpz.f.RTex, 3, 1) * mask
+    RNnp = np.moveaxis(Rnpz.f.N, 3, 1) * mask
+    del Rnpz
+    del mask
+    gc.collect()
     Xnp = np.concatenate((Xnp,RTexnp,RNnp),axis=1)
     print("Xnp combined with Rnp")
     # Train-validation split
+    
     X_train, X_val, G_train, G_val, Y_train, Y_val = train_test_split(Xnp, Gnp, Ynp, test_size=test_size, random_state=random_seed)
     
     # Convert to tensors
@@ -94,9 +106,9 @@ def evaluate_model(net, dataloader_val, criterion, device):
 def main():
     # Argument Parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument('--scene_name', type=str, required=True)
-    parser.add_argument('--single_batch_size', type=int, default=3)
-    parser.add_argument('--num_epochs', type=int, default=100)
+    parser.add_argument('--scene-name', type=str, required=True)
+    parser.add_argument('--single-batch-size', type=int, default=3)
+    parser.add_argument('--num-epochs', type=int, default=100)
     args = parser.parse_args()
     
     # Logging Configuration
